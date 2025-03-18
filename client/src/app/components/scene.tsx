@@ -5,6 +5,7 @@ import styles from "./scene.module.css";
 import { MatterportSDK } from "../lib/matterportSDK";
 import { Vector3 } from "three";
 import { ShowcaseBundleWindow } from "../../../public/third_party/matterportSDK/sdk";
+import { createCube } from "../lib/meshUtils";
 
 export default function Scene() {
   const apiKey = process.env.MATTERPORT_SDK_KEY;
@@ -25,6 +26,8 @@ export default function Scene() {
       anchorPosition: new Vector3(1.39, 2.00, -0.122),
       stemVector: new Vector3(0, 0, 0)
     });
+
+    await mpSDK.addMeshToSweep(createCube(1, 1, 1, 'red'));
   }
 
   const handleIframeLoad = useCallback(async () => {
