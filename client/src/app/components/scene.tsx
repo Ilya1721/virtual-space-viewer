@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import styles from "./scene.module.css";
-import { MatterportSDK, MP_Window } from "../lib/matterportSDK";
+import { MatterportSDK } from "../lib/matterportSDK";
+import { MP_Window } from "../lib/matterportTypes";
+import { Vector3 } from "three";
 
 export default function Scene() {
   const apiKey = process.env.MATTERPORT_SDK_KEY;
@@ -10,6 +12,20 @@ export default function Scene() {
   const iframeSrc = `/third_party/matterportSDK/showcase.html?m=${modelSID}&applicationKey=${apiKey}`;
   const iframeId = 'viewer';
   const mpSDKRef = useRef<MatterportSDK | null>(null);
+
+  const initScene = async () => {
+    const mpSDK = mpSDKRef.current;
+
+    if (!mpSDK) {
+      return;
+    }
+
+    await mpSDK.addTag({
+      label: 'Office',
+      anchorPosition: new Vector3(1.39, 2.00, -0.122),
+      stemVector: new Vector3(0, 0, 0)
+    });
+  }
 
   const handleIframeLoad = useCallback(async () => {
     const iframe = document.getElementById(iframeId) as HTMLIFrameElement;
@@ -24,6 +40,8 @@ export default function Scene() {
     if (!mpSDK) {
       return;
     }
+
+    await initScene();
   }, []);
 
   useEffect(() => {
