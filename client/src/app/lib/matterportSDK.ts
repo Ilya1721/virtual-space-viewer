@@ -1,18 +1,15 @@
-import { MP_SDK, MP_Window, TagDescription } from "./matterportTypes";
+import { MpSdk, ShowcaseBundleWindow, Tag } from "../../../public/third_party/matterportSDK/sdk";
 
 export class MatterportSDK {
-  private sdk: MP_SDK;
+  private sdk: MpSdk | null = null;
 
-  public constructor(window: MP_Window) {
-    this.sdk = window.MP_SDK as MP_SDK;
-  }
+  public constructor(private window: ShowcaseBundleWindow) {}
 
   public async connect(): Promise<void> {
-    this.sdk = await this.sdk.connect();
-    console.log(this.sdk);
+    this.sdk = await this.window.MP_SDK.connect(this.window);
   };
 
-  public async addTag(tag: TagDescription): Promise<void> {
-    await this.sdk.Tag.add(tag);
+  public async addTag(tag: Tag.Descriptor): Promise<void> {
+    await this.sdk?.Tag.add(tag);
   }
 }

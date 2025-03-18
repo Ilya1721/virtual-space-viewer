@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useRef } from "react";
 import styles from "./scene.module.css";
 import { MatterportSDK } from "../lib/matterportSDK";
-import { MP_Window } from "../lib/matterportTypes";
 import { Vector3 } from "three";
+import { ShowcaseBundleWindow } from "../../../public/third_party/matterportSDK/sdk";
 
 export default function Scene() {
   const apiKey = process.env.MATTERPORT_SDK_KEY;
@@ -33,7 +33,7 @@ export default function Scene() {
       return;
     }
 
-    mpSDKRef.current = new MatterportSDK(iframe.contentWindow as MP_Window);
+    mpSDKRef.current = new MatterportSDK(iframe.contentWindow as ShowcaseBundleWindow);
     const mpSDK = mpSDKRef.current;
     await mpSDK.connect();
 
