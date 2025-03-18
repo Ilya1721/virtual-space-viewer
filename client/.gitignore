@@ -2,7 +2,7 @@
 
 # dependencies
 /node_modules
-*/third_party
+**/third_party
 /.pnp
 .pnp.*
 .yarn/*
