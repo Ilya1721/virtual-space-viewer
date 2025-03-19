@@ -19,6 +19,16 @@ export class MatterportSDK {
     await this.sdk?.Scene.registerComponents(componentDesc);
   }
 
+  public async teleportToOffice(tagId: string): Promise<void> {
+    this.sdk?.Tag.allowAction(tagId, { docking: true, navigating: true });
+    this.sdk?.Tag.dock(tagId);
+    this.sdk?.Tag.allowAction(tagId, { docking: false, navigating: false });
+  }
+
+  public async navigateToOffice(): Promise<void> {
+    
+  }
+
   private async addObjectToScene(mesh: Mesh, name: string, lightSettings: LightSettings): Promise<Scene.IObject | undefined> {
     const objects = await this.sdk?.Scene.createObjects(1);
     if (!objects) {

@@ -1,44 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import styles from "./scene.module.css";
 import { MatterportSDK } from "../lib/matterportSDK";
 import { Vector3 } from "three";
 import { ShowcaseBundleWindow } from "../../../public/third_party/matterportSDK/sdk";
 import { boxFactory, createBox } from "../lib/componentFactory";
+import MainMenu from "./main_menu";
+import { Config } from "../api/config/route";
 
 export default function Scene() {
-  const apiKey = process.env.MATTERPORT_SDK_KEY;
-  const modelSID = process.env.MATTERPORT_MODEL_SID;
-  const iframeSrc = `/third_party/matterportSDK/showcase.html?m=${modelSID}&applicationKey=${apiKey}`;
-  const iframeId = 'viewer';
-  const mpSDKRef = useRef<MatterportSDK | null>(null);
+  const [iframeSrc, setIframeSrc] = useState<string | undefined>();
+  const [mpSDK, setMPSDK] = useState<MatterportSDK | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
-  const initScene = useCallback(async (): Promise<void> => {
-    const mpSDK = mpSDKRef.current;
+  const officeTagId = 'Office';
 
-    if (!mpSDK) {
-      return;
-    }
-
-    await mpSDK.addTag({
-      label: 'Office',
-      anchorPosition: new Vector3(1.39, 2.00, -0.122),
-      stemVector: new Vector3(0, 0, 0)
-    });
-
-    await mpSDK.registerComponents([
-      {
-        name: 'customBox',
-        factory: boxFactory
-      }
-    ]);
-
-    await addBoxToScene();
-  }, []);
-
-  const addBoxToScene = async (): Promise<void> => {
-    const mpSDK = mpSDKRef.current;
+  const addBoxToScene = useCallback(async (): Promise<void> => {
     if (!mpSDK) {
       return;
     }
@@ -52,41 +30,56 @@ export default function Scene() {
         color: { r: 1.0, g: 1.0, b: 1.0 },
       }
     });
-  }
+  }, [mpSDK]);
 
-  const handleIframeLoad = useCallback(async () => {
-    const iframe = document.getElementById(iframeId) as HTMLIFrameElement;
-    if (!iframe) {
-      return;
-    }
-
-    mpSDKRef.current = new MatterportSDK(iframe.contentWindow as ShowcaseBundleWindow);
-    const mpSDK = mpSDKRef.current;
-    await mpSDK.connect();
-
+  const initScene = useCallback(async (): Promise<void> => {
     if (!mpSDK) {
       return;
     }
 
-    await initScene();
-  }, [initScene]);
+    await mpSDK.connect();
+
+    await mpSDK.addTag({
+      id: officeTagId,
+      label: officeTagId,
+      anchorPosition: new Vector3(1.39, 2.00, -0.122),
+      stemVector: new Vector3(0, 0, 0)
+    });
+
+    await mpSDK.registerComponents([
+      {
+        name: 'customBox',
+        factory: boxFactory
+      }
+    ]);
+
+    await addBoxToScene();
+  }, [addBoxToScene, mpSDK]);
+
+  const handleIframeLoad = useCallback(async () => {
+    if (iframeRef.current) {
+      setMPSDK(new MatterportSDK(iframeRef.current.contentWindow as ShowcaseBundleWindow));
+    }
+  }, []);
+
+  const setIframeSrcFromConfig = useCallback(async () => {
+    const res = await fetch("/api/config"); 
+    const data = await res.json() as Config;
+    const { matterportSDKKey, matterportModelSID } = data;
+    setIframeSrc(`/third_party/matterportSDK/showcase.html?m=${matterportModelSID}&applicationKey=${matterportSDKKey}`)
+  }, []);
 
   useEffect(() => {
-    // Use timer for now, since onLoad for Iframe does not work for some reason
-    const timer = setTimeout(async () => {
-      await handleIframeLoad();
-    }, 1000);
-
-    return () => clearTimeout(timer);
-  }, [handleIframeLoad]);
-
-  if (!apiKey || !modelSID) {
-    return <></>;
-  }
+    setIframeSrcFromConfig();
+    if (mpSDK) {
+      initScene();
+    }
+  }, [initScene, mpSDK, setIframeSrcFromConfig]);
 
   return (
     <div className={styles.scene}>
-      <iframe id={iframeId} src={iframeSrc} />
+      <iframe ref={iframeRef} src={iframeSrc} onLoad={handleIframeLoad} />
+      <MainMenu mpSDK={mpSDK} officeTagId={officeTagId} />
     </div>
   );
 }
