@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from "react";
 import styles from "./main_menu.module.css";
-import { MatterportSDK } from '../lib/matterportSDK';
+import { MatterportSDK } from "../lib/matterportSDK";
+import { Tag } from "../../../public/third_party/matterportSDK/sdk";
 
 interface MenuItem {
   label: string;
@@ -10,15 +11,12 @@ interface MenuItem {
 }
 
 interface MainMenuProps {
-  mpSDK: MatterportSDK | null,
-  officeTagId: string
+  mpSDK: MatterportSDK | null;
+  officeTag: Tag.Descriptor | null;
 }
 
-const MainMenu: React.FC<MainMenuProps> = ({
-    mpSDK,
-    officeTagId
-}) => {
-  const [searchQuery, setSearchQuery] = useState('');
+const MainMenu: React.FC<MainMenuProps> = ({ mpSDK, officeTag }) => {
+  const [searchQuery, setSearchQuery] = useState("");
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
 
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -26,17 +24,17 @@ const MainMenu: React.FC<MainMenuProps> = ({
   };
 
   const teleportToOffice = useCallback(async () => {
-    await mpSDK?.teleportToOffice(officeTagId);
-  }, [mpSDK, officeTagId]);
+    await mpSDK?.teleportToOffice(officeTag?.id ?? '');
+  }, [mpSDK, officeTag]);
 
   const navigateToOffice = useCallback(async () => {
-    await mpSDK?.navigateToOffice();
-  }, [mpSDK]);
+    await mpSDK?.navigateToOffice(officeTag);
+  }, [mpSDK, officeTag]);
 
   useEffect(() => {
     setMenuItems([
-      { label: 'Teleport to office', onClick: teleportToOffice },
-      { label: 'Navigate to office', onClick: navigateToOffice }
+      { label: "Teleport to office", onClick: teleportToOffice },
+      { label: "Navigate to office", onClick: navigateToOffice },
     ]);
   }, [mpSDK, navigateToOffice, teleportToOffice]);
 
@@ -51,9 +49,7 @@ const MainMenu: React.FC<MainMenuProps> = ({
       <ul>
         {menuItems.map((menuItem, index) => (
           <li key={index}>
-            <button onClick={menuItem.onClick}>
-              {menuItem.label}
-            </button>
+            <button onClick={menuItem.onClick}>{menuItem.label}</button>
           </li>
         ))}
       </ul>
