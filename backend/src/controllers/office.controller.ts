@@ -14,7 +14,8 @@ export const searchMenuItems = (req: Request, res: Response) => {
   const { query } = req.body;
 
   if (!query) {
-    res.status(400).json({ error: "Search query is required" });
+    res.json(menuItems);
+    return;
   }
 
   const filteredItems = menuItems.filter(item =>
