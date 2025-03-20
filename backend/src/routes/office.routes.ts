@@ -1,9 +1,9 @@
 import { Router } from "express";
-import { getMenuItems, searchMenuItems } from "../controllers/office.controller";
+import { getMenuItemsReq, searchMenuItemsReq } from "../controllers/office.controller";
 
 const router = Router();
 
-router.get("/menu", getMenuItems);
-router.post("/menu", searchMenuItems);
+router.get("/menu", getMenuItemsReq);
+router.post("/menu", searchMenuItemsReq);
 
 export default router;

@@ -7,7 +7,11 @@ import {
   Sweep,
   Vector3,
   Dictionary,
+  Graph,
 } from "../../../public/third_party/matterportSDK/sdk";
+
+type SweepGraph = Graph.IDirectedGraph<Sweep.ObservableSweepData>;
+type SweepVertex = Graph.Vertex<MpSdk.Sweep.ObservableSweepData>;
 
 export class MatterportSDK {
   private sdk: MpSdk | null = null;
@@ -26,32 +30,20 @@ export class MatterportSDK {
     this.sdk = await this.window.MP_SDK.connect(this.window);
   }
 
+  public disconnect(): void {
+    this.sdk?.disconnect();
+  }
+
   public async addTag(tag: Tag.Descriptor): Promise<void> {
     await this.sdk?.Tag.add(tag);
   }
 
   public async teleportToOffice(tagId: string): Promise<void> {
-    this.sdk?.Tag.allowAction(tagId, { docking: true, navigating: true });
-    this.sdk?.Tag.dock(tagId);
-    this.sdk?.Tag.allowAction(tagId, { docking: false, navigating: false });
+    await this.sdk?.Mattertag.navigateToTag(tagId, this.sdk?.Mattertag.Transition.FLY);
   }
 
-  public async navigateToOffice(tag: Tag.Descriptor | null): Promise<void> {
-    if (!tag || !this.sdk) {
-      return;
-    }
-    
-    const closestToTagSweepId = await this.findClosestSweep(tag.anchorPosition);
-
-    if (!this.currentSweep?.id || !closestToTagSweepId) {
-      return;
-    }
-
-    const sweepGraph = await this.sdk.Sweep.createGraph();
-    const startSweep = sweepGraph.vertex(this.currentSweep.id);
-    const endSweep = sweepGraph.vertex(closestToTagSweepId);
-
-    if (!startSweep || !endSweep) {
+  private async walkSweepGraph(sweepGraph: SweepGraph, startSweep: SweepVertex, endSweep: SweepVertex): Promise<void> {
+    if (!this.sdk) {
       return;
     }
 
@@ -61,62 +53,81 @@ export class MatterportSDK {
       endSweep
     ).exec();
 
-    if (path && path.status === this.sdk.Graph.AStarStatus.SUCCESS) {
-      for (const vertex of path.path) {
-        const { rotation } = vertex.data;
-        const negatedRotation = {x: -rotation.x, y: -rotation.y, z: -rotation.z };
-        await this.sdk.Sweep.moveTo(vertex.id, {
-          rotation: negatedRotation,
-          transition: this.sdk.Sweep.Transition.FLY,
-          transitionTime: 2000,
-        });
-      }
-    }
-  }
-
-  private async findClosestSweep(position: Vector3): Promise<string | undefined> {
-    const sweeps = (await this.sdk?.Model.getData())?.sweeps;
-    if (!sweeps) {
+    if (!path || path.status !== this.sdk.Graph.AStarStatus.SUCCESS) {
       return;
     }
 
-    const closestSweep = sweeps.reduce((closest, sweep) => {
+    for (const vertex of path.path) {
+      await this.sdk.Sweep.moveTo(vertex.id, {
+        rotation: vertex.data.rotation,
+        transition: this.sdk.Sweep.Transition.FLY,
+        transitionTime: 1000,
+      });
+    }
+  }
+
+  public async navigateToOffice(tag: Tag.Descriptor | null): Promise<void> {
+    if (!tag || !this.sdk || !this.currentSweep) {
+      return;
+    }
+    
+    const closestToTagSweep = this.findClosestSweep(tag.anchorPosition);
+    if (!closestToTagSweep) {
+      return;
+    }
+
+    const sweepGraph = await this.sdk.Sweep.createGraph();
+    const startSweep = sweepGraph.vertex(this.currentSweep.id);
+    const endSweep = sweepGraph.vertex(closestToTagSweep.id);
+
+    if (startSweep && endSweep) {
+      await this.walkSweepGraph(sweepGraph, startSweep, endSweep);
+    }
+  }
+
+  private findClosestSweep(position: Vector3): Sweep.ObservableSweepData | undefined {
+    if (!this.sweeps) {
+      return;
+    }
+
+    const closestSweepData = Object.values(this.sweeps).reduce((closest, sweep) => {
       const dist = Math.hypot(
         position.x - sweep.position.x,
         position.y - sweep.position.y,
         position.z - sweep.position.z
       );
-      return dist < closest.dist ? { sid: sweep.sid, dist } : closest;
-    }, { sid: "", dist: Infinity });
+      return dist < closest.dist ? { sweep, dist } : closest;
+    }, { sweep: this.sweeps[0], dist: Infinity });
 
-    return closestSweep.sid;
+    return closestSweepData.sweep
   }
 
-  public async addObjectToScene(
+  public async addGLTFObjectToScene(
     meshUrl: string,
     meshPos: Vector3,
-    lightSettings: LightSettings
+    lightSettings: LightSettings,
+    scale: Vector3
   ): Promise<Scene.IObject | undefined> {
-    const objects = await this.sdk?.Scene.createObjects(1);
+    if (!this.sdk) {
+      return;
+    }
+
+    const objects = await this.sdk.Scene.createObjects(1);
     if (!objects) {
       console.log("Could not create an object");
       return;
     }
+
     const sceneObject = objects[0];
     const node = sceneObject.addNode();
     node.position.copy(meshPos);
 
-    node.addComponent("mp.gltfLoader", {
+    node.addComponent(this.sdk.Scene.Component.GLTF_LOADER, {
       url: meshUrl,
-      localScale: {
-        x: 0.025,
-        y: 0.025,
-        z: 0.025,
-      },
+      localScale: scale,
     });
 
     this.addLightToObject(sceneObject, lightSettings);
-
     sceneObject.start();
 
     return sceneObject;
@@ -126,12 +137,13 @@ export class MatterportSDK {
     sceneObject: Scene.IObject,
     lightSettings: LightSettings
   ): void {
+    if (!this.sdk) {
+      return;
+    }
+
     const lightsNode = sceneObject.addNode();
-    lightsNode.addComponent(
-      "mp.directionalLight",
-      lightSettings.directionalLight
-    );
-    lightsNode.addComponent("mp.ambientLight", lightSettings.ambientLight);
+    lightsNode.addComponent(this.sdk?.Scene.Component.DIRECTIONAL_LIGHT, lightSettings.directionalLight);
+    lightsNode.addComponent(this.sdk?.Scene.Component.AMBIENT_LIGHT, lightSettings.ambientLight);
   }
 
   private onCurrentSweepChanged(currentSweep: Sweep.ObservableSweepData): void {
@@ -150,7 +162,7 @@ export class MatterportSDK {
       this.onCurrentSweepChanged(currentSweep);
     });
     this.sdk?.Sweep.data.subscribe({
-      onCollectionUpdated: this.onSweepDataChanged
+      onCollectionUpdated: (sweeps) => this.onSweepDataChanged(sweeps),
     });
   }
 

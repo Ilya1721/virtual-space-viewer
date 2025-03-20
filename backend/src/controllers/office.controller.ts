@@ -1,26 +1,11 @@
 import { Request, Response } from "express";
-import { OFFICE_MENU_ITEMS } from "../models/office.model";
+import { getMenuItems, searchMenuItems } from "../services/office.service";
 
-const menuItems: string[] = [
-  OFFICE_MENU_ITEMS.TELEPORT_TO_OFFICE,
-  OFFICE_MENU_ITEMS.NAVIGATE_TO_OFFICE
-];
-
-export const getMenuItems = (_req: Request, res: Response<string[]>) => {
-  res.json(menuItems);
+export const getMenuItemsReq = (_req: Request, res: Response) => {
+  res.json(getMenuItems());
 };
 
-export const searchMenuItems = (req: Request, res: Response) => {
-  const { query } = req.body;
-
-  if (!query) {
-    res.json(menuItems);
-    return;
-  }
-
-  const filteredItems = menuItems.filter(item =>
-    item.toLowerCase().includes(query.toLowerCase())
-  );
-
+export const searchMenuItemsReq = (req: Request, res: Response) => {
+  const filteredItems = searchMenuItems(req.body.query);
   res.json(filteredItems);
 };

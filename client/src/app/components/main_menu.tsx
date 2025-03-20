@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import styles from "./main_menu.module.css";
 import { MatterportSDK } from "../lib/matterportSDK";
 import { Tag } from "../../../public/third_party/matterportSDK/sdk";
+import { BACKEND_URL } from "../lib/constants";
 
 interface MenuItem {
   label: string;
@@ -52,7 +53,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ mpSDK, officeTag }) => {
   }, [menuItemMap]);
 
   const getMenuItems = useCallback(async () => {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/office/menu`);
+    const response = await fetch(`${BACKEND_URL}/api/office/menu`);
     if (!response.ok) {
       throw new Error("Failed to fetch menu items");
     }
@@ -61,7 +62,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ mpSDK, officeTag }) => {
   }, [mapMenuItemsFromBackend]);
 
   const getMenuItemsByQuery = useCallback(async (query: string) => {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/office/menu`, {
+    const response = await fetch(`${BACKEND_URL}/api/office/menu`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -70,8 +71,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ mpSDK, officeTag }) => {
     });
 
     if (!response.ok) {
-      console.log("Failed to fetch menu items");
-      return;
+      throw new Error("Failed to fetch menu items");
     }
 
     setMenuItems(mapMenuItemsFromBackend(await response.json()));
