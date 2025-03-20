@@ -1,4 +1,3 @@
-import { Mesh } from "three";
 import { LightSettings } from "./light";
 import {
   MpSdk,
@@ -7,25 +6,28 @@ import {
   Scene,
   Sweep,
   Vector3,
+  Dictionary,
 } from "../../../public/third_party/matterportSDK/sdk";
 
 export class MatterportSDK {
   private sdk: MpSdk | null = null;
+  private currentSweep: Sweep.ObservableSweepData | null = null;
+  private sweeps: Dictionary<Sweep.ObservableSweepData> | null = null;
+  private onCurrentSweepChangedCallbacks: Map<string, () => Promise<void>> = new Map();
 
   public constructor(private window: ShowcaseBundleWindow) {}
 
-  public async connect(): Promise<void> {
+  public async init(): Promise<void> {
+    await this.connect();
+    this.subscribeToSweepChanges();
+  }
+
+  private async connect(): Promise<void> {
     this.sdk = await this.window.MP_SDK.connect(this.window);
   }
 
   public async addTag(tag: Tag.Descriptor): Promise<void> {
     await this.sdk?.Tag.add(tag);
-  }
-
-  public async registerComponents(
-    componentDesc: Scene.IComponentDesc[]
-  ): Promise<void> {
-    await this.sdk?.Scene.registerComponents(componentDesc);
   }
 
   public async teleportToOffice(tagId: string): Promise<void> {
@@ -35,47 +37,45 @@ export class MatterportSDK {
   }
 
   public async navigateToOffice(tag: Tag.Descriptor | null): Promise<void> {
-    if (!tag) {
+    if (!tag || !this.sdk) {
       return;
     }
-
-    const sweepGraph = await this.sdk?.Sweep.createGraph();
-    if (!sweepGraph) {
-      return;
-    }
-
-    const currentSweep = await this.sdk?.Sweep.current.waitUntil((currentSweep) => currentSweep.id !== '');
+    
     const closestToTagSweepId = await this.findClosestSweep(tag.anchorPosition);
 
-    if (!currentSweep?.id || !closestToTagSweepId) {
+    if (!this.currentSweep?.id || !closestToTagSweepId) {
       return;
     }
 
-    const startSweep = sweepGraph.vertex(currentSweep.id);
+    const sweepGraph = await this.sdk.Sweep.createGraph();
+    const startSweep = sweepGraph.vertex(this.currentSweep.id);
     const endSweep = sweepGraph.vertex(closestToTagSweepId);
 
     if (!startSweep || !endSweep) {
       return;
     }
 
-    const path = this.sdk?.Graph.createAStarRunner(
+    const path = this.sdk.Graph.createAStarRunner(
       sweepGraph,
       startSweep,
       endSweep
     ).exec();
 
-    if (!path ||path.status !== this.sdk?.Graph.AStarStatus.SUCCESS) {
-      return;
-    }
-
-    for (const vertex of path.path) {
-      await this.sdk?.Sweep.moveTo(vertex.id, { transition: this.sdk?.Sweep.Transition.FLY, transitionTime: 2000 });
+    if (path && path.status === this.sdk.Graph.AStarStatus.SUCCESS) {
+      for (const vertex of path.path) {
+        const { rotation } = vertex.data;
+        const negatedRotation = {x: -rotation.x, y: -rotation.y, z: -rotation.z };
+        await this.sdk.Sweep.moveTo(vertex.id, {
+          rotation: negatedRotation,
+          transition: this.sdk.Sweep.Transition.FLY,
+          transitionTime: 2000,
+        });
+      }
     }
   }
 
   private async findClosestSweep(position: Vector3): Promise<string | undefined> {
     const sweeps = (await this.sdk?.Model.getData())?.sweeps;
-
     if (!sweeps) {
       return;
     }
@@ -92,9 +92,9 @@ export class MatterportSDK {
     return closestSweep.sid;
   }
 
-  private async addObjectToScene(
-    mesh: Mesh,
-    name: string,
+  public async addObjectToScene(
+    meshUrl: string,
+    meshPos: Vector3,
     lightSettings: LightSettings
   ): Promise<Scene.IObject | undefined> {
     const objects = await this.sdk?.Scene.createObjects(1);
@@ -104,17 +104,14 @@ export class MatterportSDK {
     }
     const sceneObject = objects[0];
     const node = sceneObject.addNode();
-    //node.addComponent(name, {});
-    //component.outputs.objectRoot = mesh;
-    //component.outputs.collider = mesh;
-    node.position.copy(mesh.position);
+    node.position.copy(meshPos);
 
     node.addComponent("mp.gltfLoader", {
-      url: "https://cdn.jsdelivr.net/gh/mrdoob/three.js@dev/examples/models/gltf/Parrot.glb",
+      url: meshUrl,
       localScale: {
-        x: 0.5,
-        y: 0.5,
-        z: 0.5,
+        x: 0.025,
+        y: 0.025,
+        z: 0.025,
       },
     });
 
@@ -137,22 +134,39 @@ export class MatterportSDK {
     lightsNode.addComponent("mp.ambientLight", lightSettings.ambientLight);
   }
 
-  private async getSweepByIndex(
-    index: number
-  ): Promise<Sweep.SweepData | undefined> {
-    return (await this.sdk?.Model.getData())?.sweeps[index];
+  private onCurrentSweepChanged(currentSweep: Sweep.ObservableSweepData): void {
+    this.currentSweep = currentSweep;
+    for (const callback of this.onCurrentSweepChangedCallbacks.values()) {
+      callback();
+    }
   }
 
-  public async addMeshToSweep(
-    mesh: Mesh,
-    meshName: string,
-    sweepIndex: number,
-    lightSettings: LightSettings
-  ): Promise<Scene.IObject | undefined> {
-    const sweep = await this.getSweepByIndex(sweepIndex);
-    if (sweep) {
-      mesh.position.copy(sweep.position);
-      return await this.addObjectToScene(mesh, meshName, lightSettings);
-    }
+  private onSweepDataChanged(sweeps: Dictionary<Sweep.ObservableSweepData>): void {
+    this.sweeps = sweeps;
+  }
+
+  private subscribeToSweepChanges(): void {
+    this.sdk?.Sweep.current.subscribe((currentSweep) => {
+      this.onCurrentSweepChanged(currentSweep);
+    });
+    this.sdk?.Sweep.data.subscribe({
+      onCollectionUpdated: this.onSweepDataChanged
+    });
+  }
+
+  public getCurrentSweep(): Sweep.ObservableSweepData | null {
+    return this.currentSweep;
+  }
+
+  public getAllSweeps(): Dictionary<Sweep.ObservableSweepData> | null {
+    return this.sweeps;
+  }
+
+  public addOnCurrentSweepChangedCallback(key: string, callback: () => Promise<void>): void {
+    this.onCurrentSweepChangedCallbacks.set(key, callback);
+  }
+
+  public removeOnCurrentSweepChangedCallback(key: string): void {
+    this.onCurrentSweepChangedCallbacks.delete(key);
   }
 }

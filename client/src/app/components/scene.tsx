@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import styles from "./scene.module.css";
 import { MatterportSDK } from "../lib/matterportSDK";
-import { Vector3 } from "three";
-import { ShowcaseBundleWindow, Tag } from "../../../public/third_party/matterportSDK/sdk";
-import { boxFactory, createBox } from "../lib/componentFactory";
+import { ShowcaseBundleWindow, Tag, Vector3 } from "../../../public/third_party/matterportSDK/sdk";
 import MainMenu from "./main_menu";
 import { Config } from "../api/config/route";
+
+enum SCENE_CALLBACKS {
+  ADD_MESH_TO_CURRENT_SWEEP = "addMeshToCurrentSweep",
+}
 
 export default function Scene() {
   const [iframeSrc, setIframeSrc] = useState<string | undefined>();
@@ -15,14 +17,19 @@ export default function Scene() {
   const [officeTag, setOfficeTag] = useState<Tag.Descriptor | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
-  const officeTagId = "Office";
-
-  const addBoxToScene = useCallback(async (): Promise<void> => {
+  const addMeshToScene = useCallback(async (): Promise<void> => {
     if (!mpSDK) {
       return;
     }
 
-    await mpSDK.addMeshToSweep(createBox(1, 1, 1, "red"), "customBox", 2, {
+    const meshUrl = "https://cdn.jsdelivr.net/gh/mrdoob/three.js@dev/examples/models/gltf/Parrot.glb";
+
+    const currentSweep = mpSDK.getCurrentSweep();
+    if (!currentSweep) {
+      return;
+    }
+
+    await mpSDK.addObjectToScene(meshUrl, currentSweep?.position, {
       directionalLight: {
         color: { r: 0.7, g: 0.7, b: 0.7 },
       },
@@ -33,32 +40,34 @@ export default function Scene() {
     });
   }, [mpSDK]);
 
+  const addMeshToCurrentSweep = useCallback(async (): Promise<void> => {
+    if (!mpSDK) {
+      return;
+    }
+
+    await addMeshToScene();
+    mpSDK.removeOnCurrentSweepChangedCallback(SCENE_CALLBACKS.ADD_MESH_TO_CURRENT_SWEEP);
+  }, [addMeshToScene, mpSDK]);
+
   const initScene = useCallback(async (): Promise<void> => {
     if (!mpSDK) {
       return;
     }
 
-    await mpSDK.connect();
+    await mpSDK.init();
 
+    const officeTagId = "Office";
     const tagDescriptor: Tag.Descriptor = {
       id: officeTagId,
       label: officeTagId,
-      anchorPosition: new Vector3(1.39, 2.0, -0.122),
-      stemVector: new Vector3(0, 0, 0),
+      anchorPosition: {x: 1.39, y: 2.0, z: -0.122} as Vector3,
+      stemVector: {x: 0, y: 0, z: 0} as Vector3,
     }
 
     await mpSDK.addTag(tagDescriptor);
     setOfficeTag(tagDescriptor);
-
-    await mpSDK.registerComponents([
-      {
-        name: "customBox",
-        factory: boxFactory,
-      },
-    ]);
-
-    await addBoxToScene();
-  }, [addBoxToScene, mpSDK]);
+    mpSDK.addOnCurrentSweepChangedCallback(SCENE_CALLBACKS.ADD_MESH_TO_CURRENT_SWEEP, addMeshToCurrentSweep);
+  }, [addMeshToCurrentSweep, mpSDK]);
 
   const handleIframeLoad = useCallback(async () => {
     if (iframeRef.current) {
