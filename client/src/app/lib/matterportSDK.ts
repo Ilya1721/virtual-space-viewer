@@ -8,7 +8,9 @@ import {
   Vector3,
   Dictionary,
   Graph,
+  Rotation,
 } from "../../../public/third_party/matterportSDK/sdk";
+import * as THREE from "three";
 
 type SweepGraph = Graph.IDirectedGraph<Sweep.ObservableSweepData>;
 type SweepVertex = Graph.Vertex<MpSdk.Sweep.ObservableSweepData>;
@@ -47,23 +49,47 @@ export class MatterportSDK {
       return;
     }
 
-    const path = this.sdk.Graph.createAStarRunner(
+    const runner = this.sdk.Graph.createAStarRunner(
       sweepGraph,
       startSweep,
       endSweep
-    ).exec();
+    );
+    const path = runner.exec();
 
     if (!path || path.status !== this.sdk.Graph.AStarStatus.SUCCESS) {
       return;
     }
 
     for (const vertex of path.path) {
-      await this.sdk.Sweep.moveTo(vertex.id, {
-        rotation: vertex.data.rotation,
-        transition: this.sdk.Sweep.Transition.FLY,
-        transitionTime: 1000,
-      });
+      const rotationYAngle = await this.getCameraYRotationAngleToSweep(vertex.data);
+      await this.sdk.Sweep.moveTo(vertex.id, this.getMoveToSweepOptions({ x: 0, y: -rotationYAngle!, z: 0 }));
     }
+
+    runner.dispose();
+  }
+
+  private getMoveToSweepOptions(rotation: Rotation): Sweep.MoveToOptions {
+    return {
+      rotation,
+      transition: this.sdk?.Sweep.Transition.FLY,
+      transitionTime: 1000,
+    }
+  }
+
+  private async getCameraYRotationAngleToSweep(sweep: Sweep.ObservableSweepData): Promise<number | undefined> {
+    if (!this.sdk) {
+      return undefined;
+    }
+
+    const cameraPose = await this.sdk.Camera.getPose();
+    const cameraRotationMatrix = new THREE.Matrix4().makeRotationY(THREE.MathUtils.degToRad(cameraPose.rotation.y));
+    const cameraDirection = new THREE.Vector3(0, 0, 1).applyMatrix4(cameraRotationMatrix);
+
+    const sweepPosVec = new THREE.Vector3(...Object.values(sweep.position));
+    const cameraPosVec = new THREE.Vector3(...Object.values(cameraPose.position));
+    const cameraToSweep = sweepPosVec.sub(cameraPosVec);
+
+    return THREE.MathUtils.radToDeg(cameraDirection.angleTo(cameraToSweep));
   }
 
   public async navigateToOffice(tag: Tag.Descriptor | null): Promise<void> {
